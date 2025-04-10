@@ -31,14 +31,21 @@ def add_timestamp_update(content, new_tariff_rate, note=""):
 
 def update_tariff_rate(content, old_rate, new_rate):
     """Update the tariff rate in the blog post by striking through the old rate"""
-    # Pattern to match the tariff rate (not already striked through)
-    pattern = f'<s>.*?</s> {old_rate}%'
-    if re.search(pattern, content):
-        return re.sub(pattern, f'<s>\\g<0></s> {new_rate}%', content)
+    # Look for patterns like: <s>54%</s> <s>104%</s> <s>125%</s> 145%
+    main_pattern = f'(<s>.*?</s> <s>.*?</s> <s>.*?</s>) {old_rate}%'
+    match = re.search(main_pattern, content)
     
-    # If no strikethrough pattern exists yet, look for just the rate
-    pattern = f'{old_rate}%'
-    return re.sub(pattern, f'<s>{old_rate}%</s> {new_rate}%', content)
+    if match:
+        # Update the main occurrences
+        prefix = match.group(1)
+        updated = f"{prefix} <s>{old_rate}%</s> {new_rate}%"
+        content = content.replace(f"{prefix} {old_rate}%", updated)
+    
+    # Update all remaining standalone instances
+    remaining_pattern = f'(?<!<s>){old_rate}%(?!</s>)'
+    content = re.sub(remaining_pattern, f'<s>{old_rate}%</s> {new_rate}%', content)
+    
+    return content
 
 def update_product_prices(content, new_tariff_rate):
     """Update the product prices based on the new tariff rate"""
@@ -46,25 +53,25 @@ def update_product_prices(content, new_tariff_rate):
     new_atreus_tax = int(ATREUS_PRICE * new_tariff_rate / 100)
     new_model100_tax = int(MODEL_100_PRICE * new_tariff_rate / 100)
     
-    # Update Model 100 tax
-    model100_pattern = r'<s>\$\d+</s> <s>\$\d+</s> <s>\$\d+</s> \$\d+'
-    model100_match = re.search(model100_pattern, content)
+    # Find the Model 100 tax line
+    model100_tax_pattern = r'on a Model 100 \+ additional customs clearance fees\. The new US taxes on the Atreus will be'
+    model100_section = content.split(model100_tax_pattern)[0]
     
-    if model100_match:
-        old_value = model100_match.group(0)
-        last_value = re.search(r'\$(\d+)(?=\s*\+\s*additional)', content).group(1)
-        new_text = f'{old_value[:-len(last_value) - 1]}<s>${last_value}</s> ${new_model100_tax}'
-        content = content.replace(old_value, new_text)
+    model100_tax_line = re.search(r'<s>\$\d+</s> <s>\$\d+</s> <s>\$\d+</s> \$(\d+)', model100_section)
+    if model100_tax_line:
+        old_tax = model100_tax_line.group(1)
+        old_text = f'<s>$188</s> <s>$363</s> <s>$436</s> ${old_tax}'
+        new_text = f'<s>$188</s> <s>$363</s> <s>$436</s> <s>${old_tax}</s> ${new_model100_tax}'
+        content = content.replace(old_text, new_text)
     
-    # Update Atreus tax
-    atreus_pattern = r'<s>\$\d+</s> <s>\$\d+</s> <s>\$\d+</s> \$\d+'
-    atreus_match = re.search(atreus_pattern, content, pos=model100_match.end() if model100_match else 0)
-    
+    # Find the Atreus tax line
+    atreus_tax_pattern = r'The new US taxes on the Atreus will be <s>\$\d+</s> <s>\$\d+</s> <s>\$\d+</s> \$(\d+)'
+    atreus_match = re.search(atreus_tax_pattern, content)
     if atreus_match:
-        old_value = atreus_match.group(0)
-        last_value = re.search(r'\$(\d+)(?=\s*\+\s*additional)', content, pos=model100_match.end() if model100_match else 0).group(1)
-        new_text = f'{old_value[:-len(last_value) - 1]}<s>${last_value}</s> ${new_atreus_tax}'
-        content = content.replace(old_value, new_text)
+        old_tax = atreus_match.group(1)
+        old_text = f'<s>$80</s> <s>$155</s> <s>$186</s> ${old_tax}'
+        new_text = f'<s>$80</s> <s>$155</s> <s>$186</s> <s>${old_tax}</s> ${new_atreus_tax}'
+        content = content.replace(old_text, new_text)
     
     return content
 
@@ -93,6 +100,11 @@ def main():
         print("Could not find current tariff rate in the blog post")
         return
     
+    # Create a backup of the original file
+    backup_path = file_path.with_suffix('.html.bak')
+    with open(backup_path, 'w') as f:
+        f.write(content)
+    
     # Update the content
     updated_content = add_timestamp_update(content, args.new_rate, args.note)
     updated_content = update_tariff_rate(updated_content, current_rate, args.new_rate)
@@ -105,6 +117,7 @@ def main():
     print(f"Updated tariff rate from {current_rate}% to {args.new_rate}%")
     print(f"Updated Model 100 tax to ${int(MODEL_100_PRICE * args.new_rate / 100)}")
     print(f"Updated Atreus tax to ${int(ATREUS_PRICE * args.new_rate / 100)}")
+    print(f"Backup created at {backup_path}")
 
 if __name__ == "__main__":
     main()
