@@ -2,6 +2,8 @@
 
 A simple tool to update the tariff rates and product prices in the Keyboardio tariff blog post.
 
+The live blog post can be found at: [An Open Letter to U.S. Customers](https://shop.keyboard.io/blogs/news/an-open-letter-to-u-s-customers)
+
 ## Usage
 
 ```bash
